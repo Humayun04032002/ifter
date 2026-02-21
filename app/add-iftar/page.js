@@ -186,7 +186,7 @@ export default function AddIftarPage() {
             <div className="w-full max-w-lg flex items-center justify-between mb-8 flex-shrink-0">
                 <div>
                     <h2 className="text-3xl font-black text-slate-800 tracking-tight">ইফতারের তথ্য দিন</h2>
-                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mt-1">রোজাদারদের সঠিক তথ্য দিয়ে সাহায্য করুন</p>
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mt-1">রোজাদারদের সঠিক তথ্য শেয়ার করে এলাকায় ভাই ও বন্ধুদের সঙ্গে বিরিয়ানি উপভোগ করার সুযোগ করে দিন।</p>
                 </div>
                 <button onClick={() => router.back()} className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm active:scale-90 transition-all">
                     <X size={24} />
@@ -305,7 +305,7 @@ export default function AddIftarPage() {
                         <MessageSquareText size={12} className="text-indigo-400" /> বিশেষ কোনো নির্দেশনা (ঐচ্ছিক):
                     </label>
                     <textarea 
-                        rows="3" placeholder="যেমন: 'মহিলাদের জন্য আলাদা ব্যবস্থা আছে' অথবা অন্য কিছু..."
+                        rows="3" placeholder="যেমন: অতিরিক্ত প্যাকেট পাওয়া যাবে কি না, কে ইফতার দিচ্ছেন ইত্যাদি..."
                         className="w-full p-4 rounded-xl bg-white/10 border border-white/10 outline-none font-bold text-sm text-white focus:bg-white/20 transition-all"
                         onChange={(e) => setFormData({...formData, description: e.target.value})}
                     ></textarea>
