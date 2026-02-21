@@ -1,16 +1,23 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import dynamic from 'next/dynamic'; // Dynamic import এর জন্য
 import 'leaflet/dist/leaflet.css';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { X, Clock, MapPin, ArrowRight, LocateFixed, MessageSquareText } from 'lucide-react';
 import useLocation from '@/hooks/useLocation';
 import { showToast } from '@/lib/toast'; 
-import Swal from 'sweetalert2'; // SweetAlert2 ইমপোর্ট
+import Swal from 'sweetalert2';
 
-function ChangeView({ center }) {
+// Leaflet কম্পোনেন্টগুলোকে সার্ভার সাইড রেন্ডারিং (SSR) থেকে আলাদা করা
+const MapContainer = dynamic(() => import('react-leaflet').then((mod) => mod.MapContainer), { ssr: false });
+const TileLayer = dynamic(() => import('react-leaflet').then((mod) => mod.TileLayer), { ssr: false });
+const Marker = dynamic(() => import('react-leaflet').then((mod) => mod.Marker), { ssr: false });
+const MapUpdater = dynamic(() => Promise.resolve(ChangeView), { ssr: false });
+const EventManager = dynamic(() => Promise.resolve(LocationSelector), { ssr: false });
+
+function ChangeView({ center, useMap }) {
     const map = useMap();
     useEffect(() => {
         if (center) {
@@ -21,10 +28,22 @@ function ChangeView({ center }) {
     return null;
 }
 
+function LocationSelector({ useMapEvents, setManualPos, setIsSearching }) {
+    useMapEvents({
+        moveend: (e) => {
+            const center = e.target.getCenter();
+            setManualPos([center.lat, center.lng]);
+            setIsSearching(false);
+        },
+    });
+    return null;
+}
+
 export default function AddIftarPage() {
     const router = useRouter();
     const { position: userPos } = useLocation();
     const [leaflet, setLeaflet] = useState(null);
+    const [leafletModules, setLeafletModules] = useState(null);
     
     const [manualPos, setManualPos] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -51,13 +70,16 @@ export default function AddIftarPage() {
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            import('leaflet').then((L) => {
+            Promise.all([
+                import('leaflet'),
+                import('react-leaflet')
+            ]).then(([L, RL]) => {
                 setLeaflet(L);
+                setLeafletModules(RL);
             });
         }
     }, []);
 
-    // কাছাকাছি মসজিদের ডাটা ফেচ করা
     useEffect(() => {
         const targetPos = manualPos || userPos;
         if (targetPos) {
@@ -78,7 +100,6 @@ export default function AddIftarPage() {
         }
     }, [manualPos, userPos]);
 
-    // সার্চ সাজেশন লজিক
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
             if (searchQuery.length > 2 && isSearching) {
@@ -92,7 +113,6 @@ export default function AddIftarPage() {
         return () => clearTimeout(delayDebounceFn);
     }, [searchQuery, isSearching]);
 
-    // ম্যাপ সেন্টার অনুযায়ী এড্রেস রিভার্স জিওকোডিং
     useEffect(() => {
         if (manualPos && !isSearching) {
             fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${manualPos[0]}&lon=${manualPos[1]}`)
@@ -107,30 +127,16 @@ export default function AddIftarPage() {
     }, [manualPos]);
 
     const colorfulMosqueIcon = useMemo(() => {
-    if (!leaflet) return null;
-    
-    return new leaflet.divIcon({
-        html: `<div style="
-                font-size: 26px; 
-                background: #4f46e5; 
-                width: 42px; 
-                height: 42px; 
-                display: flex; 
-                align-items: center; 
-                justify-content: center; 
-                border-radius: 12px; 
-                box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);
-                border: 2px solid white;
-                transform: rotate(-45deg);
-                margin-top: -10px;
-                ">
-                <div style="transform: rotate(45deg);">🕌</div>
-               </div>`,
-        className: 'custom-mosque-marker',
-        iconSize: [42, 42],
-        iconAnchor: [21, 42],
-    });
-}, [leaflet]);
+        if (!leaflet) return null;
+        return new leaflet.divIcon({
+            html: `<div style="font-size: 26px; background: #4f46e5; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 12px; box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4); border: 2px solid white; transform: rotate(-45deg); margin-top: -10px;">
+                    <div style="transform: rotate(45deg);">🕌</div>
+                   </div>`,
+            className: 'custom-mosque-marker',
+            iconSize: [42, 42],
+            iconAnchor: [21, 42],
+        });
+    }, [leaflet]);
 
     const handleMosqueClick = (mosque) => {
         setFormData(prev => ({ ...prev, mosqueName: mosque.name }));
@@ -138,26 +144,13 @@ export default function AddIftarPage() {
         setManualPos([mosque.lat, mosque.lng]);
     };
 
-    function LocationSelector() {
-        useMapEvents({
-            moveend: (e) => {
-                const center = e.target.getCenter();
-                setManualPos([center.lat, center.lng]);
-                setIsSearching(false);
-            },
-        });
-        return null;
-    }
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         const finalPos = manualPos || userPos;
-        
         if(!finalPos) {
             showToast("লোকেশন পাওয়া যায়নি!", "error");
             return;
         }
-        
         setLoading(true);
         try {
             await addDoc(collection(db, "iftar_locations"), {
@@ -171,23 +164,18 @@ export default function AddIftarPage() {
                 comments: []
             });
 
-            // SweetAlert2 ব্যবহার করে সাকসেস মেসেজ
             await Swal.fire({
-                title: 'আলহামদুলিল্লাহ!',
-                text: 'ইফতারের তথ্যটি সফলভাবে যোগ করা হয়েছে।',
+                title: 'মা-শা-আল্লাহ!',
+                text: 'ইফতারের তথ্যটি সফলভাবে শেয়ার করা হয়েছে।',
                 icon: 'success',
-                confirmButtonText: 'ঠিক আছে',
-                confirmButtonColor: '#4f46e5', // Indigo-600
+                confirmButtonText: 'জাজাকাল্লাহু খাইরান',
+                confirmButtonColor: '#4f46e5',
                 background: '#ffffff',
-                customClass: {
-                    popup: 'rounded-[2rem]',
-                    confirmButton: 'rounded-xl px-6 py-3 font-bold'
-                }
+                customClass: { popup: 'rounded-[2rem]', confirmButton: 'rounded-xl px-6 py-3 font-bold' }
             });
-
             router.push('/');
         } catch (err) {
-            showToast("তথ্য সেভ করা যায়নি।", "error");
+            showToast("তথ্য সেভ করা যায়নি।", "error");
         } finally {
             setLoading(false);
         }
@@ -195,11 +183,10 @@ export default function AddIftarPage() {
 
     return (
         <main className="h-screen w-full bg-white overflow-y-auto flex flex-col items-center px-6 pt-8 pb-32 custom-scrollbar font-sans">
-            
             <div className="w-full max-w-lg flex items-center justify-between mb-8 flex-shrink-0">
                 <div>
-                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">নতুন ইফতার</h2>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">সঠিক তথ্য দিয়ে এলাকায় ভাই-বন্ধুদের সঙ্গে বিরিয়ানি খাওয়ার সুযোগ দিন</p>
+                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">ইফতারের তথ্য দিন</h2>
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mt-1">রোজাদারদের সঠিক তথ্য দিয়ে সাহায্য করুন</p>
                 </div>
                 <button onClick={() => router.back()} className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm active:scale-90 transition-all">
                     <X size={24} />
@@ -207,9 +194,8 @@ export default function AddIftarPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="w-full max-w-lg space-y-6">
-                {/* মসজিদের নাম */}
                 <div className="group">
-                    <label className="block text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-indigo-600">মসজিদ বা মাদ্রাসার নাম:</label>
+                    <label className="block text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest ml-1">মসজিদ বা মাদ্রাসার নাম:</label>
                     <input 
                         type="text" required placeholder="উদা: বায়তুল মোকাররম মসজিদ"
                         className="w-full p-5 rounded-2xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 bg-slate-50/50"
@@ -218,9 +204,8 @@ export default function AddIftarPage() {
                     />
                 </div>
 
-                {/* মেনু নির্বাচন */}
                 <div className="space-y-3">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">খাবার মেনু:</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">আজকের ইফতার মেনু:</label>
                     <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                         {foodItems.map((item) => (
                             <button
@@ -235,11 +220,10 @@ export default function AddIftarPage() {
                     </div>
                 </div>
 
-                {/* সময় ও তারিখ সেকশন */}
                 <div className="bg-indigo-600 p-6 rounded-[2.5rem] shadow-xl shadow-indigo-100 space-y-4">
                     <div className="flex items-center gap-2 mb-2">
                         <Clock size={12} className="text-white" />
-                        <span className="text-[10px] font-black text-indigo-100 uppercase tracking-widest">সময় ও তারিখ</span>
+                        <span className="text-[10px] font-black text-indigo-100 uppercase tracking-widest">ইফতারের সময় ও তারিখ</span>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <input type="date" value={formData.date} className="w-full p-4 rounded-2xl bg-white/10 border border-white/20 outline-none font-bold text-white" onChange={(e) => setFormData({...formData, date: e.target.value})} />
@@ -247,9 +231,8 @@ export default function AddIftarPage() {
                     </div>
                 </div>
 
-                {/* লোকেশন সেকশন */}
                 <div className="space-y-3 relative">
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-widest ml-1">লোকেশন সেট করুন:</label>
+                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-widest ml-1">সঠিক লোকেশন পিন করুন:</label>
                     <div className="relative group">
                         <input 
                             type="text" placeholder="এলাকার নাম লিখে খুঁজুন"
@@ -285,7 +268,7 @@ export default function AddIftarPage() {
                     </div>
 
                     <div className="h-72 w-full rounded-[2.5rem] border-4 border-slate-50 z-10 shadow-sm overflow-hidden relative">
-                        {leaflet && (userPos || manualPos) ? (
+                        {typeof window !== "undefined" && leaflet && leafletModules && (userPos || manualPos) ? (
                             <MapContainer 
                                 center={manualPos || userPos} 
                                 zoom={16} 
@@ -293,17 +276,18 @@ export default function AddIftarPage() {
                                 scrollWheelZoom={true} 
                             >
                                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                                <ChangeView center={manualPos || userPos} />
-                                <LocationSelector />
-                                
+                                <MapUpdater center={manualPos || userPos} useMap={leafletModules.useMap} />
+                                <EventManager 
+                                    useMapEvents={leafletModules.useMapEvents} 
+                                    setManualPos={setManualPos} 
+                                    setIsSearching={setIsSearching} 
+                                />
                                 {nearbyMosques.map(mosque => (
                                     <Marker 
                                         key={mosque.id} 
                                         position={[mosque.lat, mosque.lng]} 
                                         icon={colorfulMosqueIcon} 
-                                        eventHandlers={{
-                                            click: () => handleMosqueClick(mosque),
-                                        }}
+                                        eventHandlers={{ click: () => handleMosqueClick(mosque) }}
                                     />
                                 ))}
                             </MapContainer>
@@ -312,25 +296,21 @@ export default function AddIftarPage() {
                         )}
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full z-[400] pointer-events-none">
                             <MapPin size={36} className="text-indigo-600 drop-shadow-2xl animate-bounce" />
-                            <div className="w-2 h-2 bg-black/20 rounded-full blur-[2px] mx-auto mt-[-4px]"></div>
                         </div>
                     </div>
                 </div>
 
-                {/* ডেসক্রিপশন সেকশন */}
                 <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white space-y-3">
                     <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                        <MessageSquareText size={12} className="text-indigo-400" /> অতিরিক্ত তথ্য (ঐচ্ছিক):
+                        <MessageSquareText size={12} className="text-indigo-400" /> বিশেষ কোনো নির্দেশনা (ঐচ্ছিক):
                     </label>
                     <textarea 
-                        rows="3" placeholder="ইফতারের সঙ্গে সম্পর্কিত বিশেষ কোনো তথ্য থাকলে অনুগ্রহ করে এখানে উল্লেখ করুন..."
+                        rows="3" placeholder="যেমন: 'মহিলাদের জন্য আলাদা ব্যবস্থা আছে' অথবা অন্য কিছু..."
                         className="w-full p-4 rounded-xl bg-white/10 border border-white/10 outline-none font-bold text-sm text-white focus:bg-white/20 transition-all"
                         onChange={(e) => setFormData({...formData, description: e.target.value})}
                     ></textarea>
-                    <p className="text-[10px] font-bold text-indigo-300 text-center italic">মসজিদ সঠিক জায়গায় পিন করুন</p>
                 </div>
 
-                {/* সাবমিট বাটন */}
                 <button 
                     type="submit" disabled={loading}
                     className={`w-full py-5 rounded-[2rem] font-black text-xl transition-all flex items-center justify-center gap-3

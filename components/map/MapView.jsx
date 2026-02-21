@@ -1,10 +1,18 @@
 "use client";
-import { MapContainer, TileLayer, Marker, useMapEvents, Circle, useMap } from 'react-leaflet';
+import React, { useEffect, useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useState, useMemo } from 'react';
 
-// ১. ম্যাপ ভিউ আপডেট করার সাব-কম্পোনেন্ট
-function ChangeView({ center }) {
+// ১. Leaflet কম্পোনেন্টগুলো ডায়নামিকভাবে ইমপোর্ট করা
+const MapContainer = dynamic(() => import('react-leaflet').then((mod) => mod.MapContainer), { ssr: false });
+const TileLayer = dynamic(() => import('react-leaflet').then((mod) => mod.TileLayer), { ssr: false });
+const Marker = dynamic(() => import('react-leaflet').then((mod) => mod.Marker), { ssr: false });
+const Circle = dynamic(() => import('react-leaflet').then((mod) => mod.Circle), { ssr: false });
+const MapUpdater = dynamic(() => Promise.resolve(ChangeView), { ssr: false });
+const EventManager = dynamic(() => Promise.resolve(LocationSelector), { ssr: false });
+
+// ম্যাপ ভিউ আপডেট করার সাব-কম্পোনেন্ট
+function ChangeView({ center, useMap }) {
     const map = useMap();
     useEffect(() => {
         if (center && center[0] && center[1]) {
@@ -17,107 +25,104 @@ function ChangeView({ center }) {
     return null;
 }
 
+// লোকেশন সিলেক্টর লজিক
+function LocationSelector({ isAdding, setManualPos, useMapEvents }) {
+    useMapEvents({
+        moveend: (e) => {
+            if (isAdding && setManualPos) {
+                const center = e.target.getCenter();
+                setManualPos([center.lat, center.lng]);
+            }
+        },
+    });
+    return null;
+}
+
 export default function MapView({ userPos, locations = [], isAdding, setManualPos, onMarkerClick }) {
     const [leaflet, setLeaflet] = useState(null);
+    const [leafletModules, setLeafletModules] = useState(null);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            import('leaflet').then((L) => {
-                // ডিফল্ট মার্কার শ্যাডো ফিক্স
+            Promise.all([
+                import('leaflet'),
+                import('react-leaflet')
+            ]).then(([L, RL]) => {
+                // ডিফল্ট মার্কার ফিক্স
                 delete L.Icon.Default.prototype._getIconUrl;
                 L.Icon.Default.mergeOptions({
                     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
                 });
                 setLeaflet(L);
+                setLeafletModules(RL);
             });
         }
     }, []);
 
-    // ২. খাবারের ধরণ অনুযায়ী কালারফুল ও প্রিমিয়াম আইকন সেট করা
+    // ২. ইমোজি আইকন জেনারেটর
     const getFoodIcon = (foodType) => {
-    if (!leaflet) return null;
+        if (!leaflet) return null;
+        const emojiMapping = {
+            'খিচুড়ি': '🥘',
+            'বিরিয়ানি': '🍛',
+            'তেহারি': '🍚',
+            'বক্স ইফতার': '🍱',
+            'ছোলা-মুড়ি': '🥣',
+        };
+        const emoji = emojiMapping[foodType] || '🌙';
 
-    // খাবার অনুযায়ী ইমোজি ম্যাপিং
-    const emojiMapping = {
-        'খিচুড়ি': '🥘',
-        'বিরিয়ানি': '🍛',
-        'তেহারি': '🍚',
-        'বক্স ইফতার': '🍱',
-        'ছোলা-মুড়ি': '🥣',
-    };
-
-    const emoji = emojiMapping[foodType] || '🌙'; // ডিফল্ট ইমোজি
-
-    // divIcon ব্যবহার করে ইমোজিকে মার্কার বানানো
-    return new leaflet.divIcon({
-        html: `<div style="
-                font-size: 30px; 
-                background: white; 
-                width: 45px; 
-                height: 45px; 
-                display: flex; 
-                align-items: center; 
-                justify-content: center; 
-                border-radius: 50%; 
-                box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-                border: 2px solid #4f46e5;
-                ">
-                ${emoji}
-               </div>`,
-        className: 'custom-emoji-marker',
-        iconSize: [45, 45],
-        iconAnchor: [22, 45], // নিচ বরাবর এঙ্কর করতে
-    });
-
-        return new leaflet.Icon({
-            iconUrl: iconUrl,
-            iconSize: [42, 42], // সামান্য বড় করা হয়েছে যাতে দেখতে সুন্দর লাগে
+        return new leaflet.divIcon({
+            html: `<div style="
+                    font-size: 26px; 
+                    background: white; 
+                    width: 42px; 
+                    height: 42px; 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center; 
+                    border-radius: 14px; 
+                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+                    border: 2.5px solid #4f46e5;
+                    ">
+                    ${emoji}
+                   </div>`,
+            className: 'custom-emoji-marker',
+            iconSize: [42, 42],
             iconAnchor: [21, 42],
-            popupAnchor: [1, -34],
-            className: 'drop-shadow-2xl animate-in zoom-in duration-300' // এনিমেশন এবং শ্যাডো যোগ করা হয়েছে
         });
     };
 
-    // ৩. ইউজারের নিজের লোকেশনের জন্য প্রিমিয়াম ব্লু ডট আইকন
+    // ৩. ইউজারের বর্তমান লোকেশন আইকন
     const userLocationIcon = useMemo(() => {
         if (!leaflet) return null;
-        return new leaflet.Icon({
-            iconUrl: 'https://cdn-icons-png.flaticon.com/512/7133/7133312.png', // Blue pulse/Navigation icon
-            iconSize: [30, 30],
-            iconAnchor: [15, 15]
+        return new leaflet.divIcon({
+            html: `<div class="relative">
+                    <div class="absolute -inset-2 bg-indigo-500 rounded-full animate-ping opacity-20"></div>
+                    <div class="relative bg-indigo-600 w-4 h-4 rounded-full border-2 border-white shadow-lg"></div>
+                   </div>`,
+            className: 'user-pos-marker',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
         });
     }, [leaflet]);
 
-    // ৪. আশেপাশের মসজিদের জন্য ছোট আইকন (isAdding mode এ)
+    // ৪. আশেপাশের মসজিদের ছোট আইকন
     const smallMosqueIcon = useMemo(() => {
         if (!leaflet) return null;
-        return new leaflet.Icon({
-            iconUrl: 'https://cdn-icons-png.flaticon.com/512/2800/2800318.png',
+        return new leaflet.divIcon({
+            html: `<div style="font-size: 18px; opacity: 0.8;">🕌</div>`,
+            className: 'mosque-pointer',
             iconSize: [24, 24],
-            iconAnchor: [12, 24],
-            className: 'nearby-mosque-pointer opacity-70 grayscale-[0.3]'
+            iconAnchor: [12, 12]
         });
     }, [leaflet]);
 
-    // লোকেশন সিলেক্টর লজিক (ড্র্যাগ করে পিন সেট করা)
-    function LocationSelector() {
-        useMapEvents({
-            moveend: (e) => {
-                if (isAdding && setManualPos) {
-                    const center = e.target.getCenter();
-                    setManualPos([center.lat, center.lng]);
-                }
-            },
-        });
-        return null;
-    }
-
-    if (!leaflet || !userPos) {
+    if (!leaflet || !leafletModules || !userPos) {
         return (
             <div className="h-full w-full bg-slate-50 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
                     <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="font-black text-slate-400 text-sm uppercase tracking-widest">ম্যাপ লোড হচ্ছে...</p>
+                    <p className="font-bold text-slate-400 text-[10px] uppercase tracking-[0.2em]">ম্যাপ প্রস্তুত হচ্ছে...</p>
                 </div>
             </div>
         );
@@ -131,24 +136,39 @@ export default function MapView({ userPos, locations = [], isAdding, setManualPo
                 zoom={16} 
                 className="h-full w-full z-0"
                 scrollWheelZoom={true}
-                zoomControl={false} // কাস্টম ইউআই এর জন্য ডিফল্ট কন্ট্রোল অফ
+                zoomControl={false}
             >
-                {/* প্রিমিয়াম ম্যাপ স্টাইল (CartoDB Light) ব্যবহার করা যেতে পারে অথবা স্ট্যান্ডার্ড OSM */}
                 <TileLayer 
                     url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                     attribution='&copy; OpenStreetMap'
                 />
                 
-                <ChangeView center={userPos} />
-                <LocationSelector />
+                <MapUpdater center={userPos} useMap={leafletModules.useMap} />
                 
-                {/* ইউজারের নিজের বর্তমান লোকেশন মার্কার */}
+                <EventManager 
+                    isAdding={isAdding} 
+                    setManualPos={setManualPos} 
+                    useMapEvents={leafletModules.useMapEvents} 
+                />
+                
                 {!isAdding && userPos && (
-                    <Marker position={userPos} icon={userLocationIcon} />
+                    <>
+                        <Marker position={userPos} icon={userLocationIcon} />
+                        <Circle 
+                            center={userPos} 
+                            radius={500} 
+                            pathOptions={{ 
+                                color: '#6366f1', 
+                                fillColor: '#6366f1', 
+                                fillOpacity: 0.03, 
+                                weight: 1,
+                                dashArray: '4, 8' 
+                            }} 
+                        />
+                    </>
                 )}
 
                 {isAdding ? (
-                    // ইফতার যোগ করার সময় আশেপাশের সম্ভাব্য মসজিদগুলো
                     locations.map((loc, idx) => (
                         <Marker 
                             key={`mosque-${idx}`} 
@@ -157,7 +177,6 @@ export default function MapView({ userPos, locations = [], isAdding, setManualPo
                         />
                     ))
                 ) : (
-                    // হোম পেজে খাবার অনুযায়ী কালারফুল আইকন
                     locations.map((loc) => (
                         <Marker 
                             key={loc.id} 
@@ -168,21 +187,6 @@ export default function MapView({ userPos, locations = [], isAdding, setManualPo
                             }}
                         />
                     ))
-                )}
-
-                {/* ৫. ইউজারের এলাকার জন্য একটি সুন্দর ভিজ্যুয়াল সার্কেল */}
-                {!isAdding && userPos && (
-                    <Circle 
-                        center={userPos} 
-                        radius={400} 
-                        pathOptions={{ 
-                            color: '#6366f1', 
-                            fillColor: '#6366f1', 
-                            fillOpacity: 0.04, 
-                            weight: 1,
-                            dashArray: '5, 10' 
-                        }} 
-                    />
                 )}
             </MapContainer>
         </div>
