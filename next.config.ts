@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+
 const withPWA = require("next-pwa")({
   dest: "public",
   register: true,
@@ -6,8 +7,13 @@ const withPWA = require("next-pwa")({
   disable: process.env.NODE_ENV === "development",
 });
 
+/** @type {NextConfig} */
 const nextConfig: NextConfig = {
-  /* আপনার অন্য কোনো কনফিগ অপশন থাকলে এখানে দিন */
+  // ⛔ Turbopack explicitly disable / silence
+  turbopack: {},
+
+  // optional but safe
+  reactStrictMode: true,
 };
 
 export default withPWA(nextConfig);
