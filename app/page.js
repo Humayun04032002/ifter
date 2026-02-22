@@ -1,4 +1,3 @@
-// app/page.js
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -49,8 +48,22 @@ export default function Home() {
     signInAnonymously(auth).catch(err => console.error("Auth Error", err));
   }, []);
 
+  // --- আপডেট করা ফিল্টার লজিক ---
   const filteredLocations = locations.filter(loc => {
-    return selectedCategory === "সব" || loc.foodType === selectedCategory;
+    // ১. আজকের তারিখের শুরু (রাত ১২:০০) বের করা
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    
+    // ২. ডাটাবেসের তারিখকে টাইমস্ট্যাম্পে রূপান্তর (যদি তারিখ না থাকে তবে আজকের তারিখ ধরে নেবে)
+    const eventDate = loc.date ? new Date(loc.date).getTime() : todayStart;
+    
+    // ৩. ফিল্টারিং শর্ত: 
+    // - তারিখ আজকের বা ভবিষ্যতের হতে হবে
+    // - ক্যাটাগরি মিলতে হবে
+    const isUpcoming = eventDate >= todayStart;
+    const matchesCategory = selectedCategory === "সব" || loc.foodType === selectedCategory;
+    
+    return isUpcoming && matchesCategory;
   });
 
   const handleVote = async (id, isTrue) => {
@@ -89,42 +102,23 @@ export default function Home() {
   };
 
   const handleShare = async (loc) => {
+    // Google Maps URL বাগ ফিক্স
     const mapsUrl = `https://www.google.com/maps?q=${loc.lat},${loc.lng}`;
     const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const text = `🌙 ইফতার আপডেট: ${loc.mosqueName}\n🍱 মেনু: ${loc.foodType}\n📍 ম্যাপ: ${mapsUrl}\n🔗 আরও দেখুন: ${siteUrl}`;
     
-    // ১. শেয়ার শিট ট্রাই করা (মোবাইলের জন্য)
-    if (navigator.share && typeof navigator.share === 'function') {
+    if (navigator.share) {
       try {
         await navigator.share({ title: 'ইফতার পয়েন্ট', text });
         return;
-      } catch (err) {
-        console.log("Share skipped");
-      }
+      } catch (err) { console.log("Share skipped"); }
     }
 
-    // ২. ক্লিপবোর্ড ট্রাই করা (TypeError ফিক্স করা হয়েছে কন্ডিশন দিয়ে)
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        Toast.fire({ icon: 'info', title: 'লিংক কপি করা হয়েছে!', background: '#fff', color: '#1e293b' });
-        return;
-      } catch (err) {
-        console.error("Clipboard error", err);
-      }
-    }
-
-    // ৩. ফাইনাল ফলব্যাক (সব পরিস্থিতিতে কাজ করবে)
     try {
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
+      await navigator.clipboard.writeText(text);
       Toast.fire({ icon: 'info', title: 'লিংক কপি করা হয়েছে!', background: '#fff', color: '#1e293b' });
     } catch (err) {
-      Toast.fire({ icon: 'error', title: 'শেয়ার করা সম্ভব হয়নি' });
+      Toast.fire({ icon: 'error', title: 'শেয়ার করা সম্ভব হয়নি' });
     }
   };
 
@@ -134,7 +128,8 @@ export default function Home() {
         <div className="flex justify-between items-center max-w-lg mx-auto w-full">
             <div className="bg-white/90 backdrop-blur-xl px-4 py-2.5 rounded-2xl flex items-center gap-2 border border-white shadow-xl pointer-events-auto">
                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                <p className="text-slate-900 text-[11px] font-black uppercase">আশেপাশে <span className="text-indigo-600 ml-1">{locations.length}টি ইফতার</span></p>
+                {/* এখানে locations.length এর বদলে filteredLocations.length ব্যবহার করা হয়েছে */}
+                <p className="text-slate-900 text-[11px] font-black uppercase">আশেপাশে <span className="text-indigo-600 ml-1">{filteredLocations.length}টি ইফতার</span></p>
             </div>
             <div className="bg-slate-900 px-4 py-2.5 rounded-2xl shadow-xl pointer-events-auto flex items-center gap-2 border border-slate-800">
                 <Calendar size={12} className="text-indigo-400" />

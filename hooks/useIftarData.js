@@ -10,10 +10,17 @@ export function useIftarData(userLat, userLng) {
   useEffect(() => {
     if (!userLat || !userLng) return;
 
-    // আজকের তারিখ বের করা (YYYY-MM-DD ফরম্যাটে)
-    const today = new Date().toISOString().split('T')[0];
+    // ১. সঠিক লোকাল তারিখ বের করার ফাংশন (টাইমজোন বাগ ফিক্সড)
+    const getTodayStr = () => {
+        const now = new Date();
+        // বাংলাদেশের অফসেট অনুযায়ী লোকাল ডেট ফরম্যাট (YYYY-MM-DD)
+        const offset = now.getTimezoneOffset() * 60000;
+        return new Date(now - offset).toISOString().split('T')[0];
+    };
+    
+    const today = getTodayStr();
 
-    // ১. ফায়ারবেস থেকে রিয়েল-টাইম ডাটা কুয়েরি
+    // ২. ফায়ারবেস থেকে রিয়েল-টাইম ডাটা কুয়েরি
     const q = query(
       collection(db, "iftar_locations"), 
       orderBy("createdAt", "desc")
@@ -23,7 +30,7 @@ export function useIftarData(userLat, userLng) {
       const allData = snapshot.docs.map(doc => {
         const data = doc.data();
         
-        // ২. ভোট গণনা লজিক
+        // ৩. ভোট গণনা লজিক
         const votes = data.votes || {};
         const upVotes = Object.values(votes).filter(v => v === true).length;
         const downVotes = Object.values(votes).filter(v => v === false).length;
@@ -33,27 +40,26 @@ export function useIftarData(userLat, userLng) {
           ...data,
           upVotes,
           downVotes,
-          // ৩. ভেরিফাইড স্ট্যাটাস
+          // ৪. ভেরিফাইড স্ট্যাটাস (কমপক্ষে ৫টি পজিটিভ ভোট)
           isVerified: (upVotes - downVotes) >= 5,
-          // ৪. ডিসটেন্স ক্যালকুলেশন
+          // ৫. ডিসটেন্স ক্যালকুলেশন
           distance: getDistance(userLat, userLng, data.lat, data.lng)
         };
       });
 
-      // ৫. মাল্টিপল ফিল্টার লজিক: 
-      // - ২০ কিমি ডিসটেন্স ফিল্টার
-      // - শুধুমাত্র আজকের তারিখের ইফতার (পুরনো দিনের গুলো দেখাবে না)
+      // ৬. মাল্টিপল ফিল্টার লজিক: 
       const filtered = allData.filter(loc => {
+        // - ২০ কিমি ডিসটেন্স ফিল্টার
         const withinDistance = loc.distance <= 20;
         
-        // যদি ডাটাবেজে date না থাকে তবে সেটাকে আজকের জন্য বৈধ ধরা হবে (অপশনাল)
-        // কিন্তু ডিলিট লজিকের জন্য 'date' ফিল্ড থাকা জরুরি
-        const isToday = loc.date === today; 
+        // - শুধুমাত্র আজকের বা ভবিষ্যতের তারিখের ইফতার (পুরনো দিনের গুলো দেখাবে না)
+        // loc.date যদি today এর চেয়ে ছোট হয় তবে সেটি বাদ যাবে
+        const isNotExpired = loc.date ? loc.date >= today : true; 
 
-        return withinDistance && isToday;
+        return withinDistance && isNotExpired;
       });
 
-      // ৬. ডিসটেন্স অনুযায়ী সর্টিং (কাছের গুলো আগে)
+      // ৭. ডিসটেন্স অনুযায়ী সর্টিং (কাছের গুলো আগে)
       filtered.sort((a, b) => a.distance - b.distance);
 
       setLocations(filtered);

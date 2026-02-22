@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic'; // Dynamic import এর জন্য
+import dynamic from 'next/dynamic'; 
 import 'leaflet/dist/leaflet.css';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -52,12 +52,19 @@ export default function AddIftarPage() {
     const [isSearching, setIsSearching] = useState(false);
     const [nearbyMosques, setNearbyMosques] = useState([]);
 
+    // সঠিক লোকাল তারিখ বের করার ফাংশন (টাইমজোন বাগ ফিক্সড)
+    const getLocalDate = () => {
+        const now = new Date();
+        const offset = now.getTimezoneOffset() * 60000;
+        return new Date(now - offset).toISOString().split('T')[0];
+    };
+
     const [formData, setFormData] = useState({
         mosqueName: '',
         description: '',
         foodType: 'খিচুড়ি',
         time: '18:15',
-        date: new Date().toISOString().split('T')[0]
+        date: getLocalDate() // ডিফল্ট তারিখ আজকের লোকাল তারিখ
     });
 
     const foodItems = [
@@ -166,7 +173,7 @@ export default function AddIftarPage() {
 
             await Swal.fire({
                 title: 'মা-শা-আল্লাহ!',
-                text: 'ইফতারের তথ্যটি সফলভাবে শেয়ার করা হয়েছে।',
+                text: 'ইফতারের তথ্যটি সফলভাবে শেয়ার করা হয়েছে।',
                 icon: 'success',
                 confirmButtonText: 'জাজাকাল্লাহু খাইরান',
                 confirmButtonColor: '#4f46e5',
@@ -175,7 +182,7 @@ export default function AddIftarPage() {
             });
             router.push('/');
         } catch (err) {
-            showToast("তথ্য সেভ করা যায়নি।", "error");
+            showToast("তথ্য সেভ করা যায়নি।", "error");
         } finally {
             setLoading(false);
         }
@@ -223,11 +230,23 @@ export default function AddIftarPage() {
                 <div className="bg-indigo-600 p-6 rounded-[2.5rem] shadow-xl shadow-indigo-100 space-y-4">
                     <div className="flex items-center gap-2 mb-2">
                         <Clock size={12} className="text-white" />
-                        <span className="text-[10px] font-black text-indigo-100 uppercase tracking-widest">ইফতারের সময় ও তারিখ</span>
+                        <span className="text-[10px] font-black text-indigo-100 uppercase tracking-widest">ইফতারের সময় ও তারিখ</span>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                        <input type="date" value={formData.date} className="w-full p-4 rounded-2xl bg-white/10 border border-white/20 outline-none font-bold text-white" onChange={(e) => setFormData({...formData, date: e.target.value})} />
-                        <input type="time" value={formData.time} className="w-full p-4 rounded-2xl bg-white/10 border border-white/20 outline-none font-bold text-white" onChange={(e) => setFormData({...formData, time: e.target.value})} />
+                        {/* min attribute যোগ করা হয়েছে যাতে আজকের আগের তারিখ সিলেক্ট করা না যায় */}
+                        <input 
+                            type="date" 
+                            min={getLocalDate()} 
+                            value={formData.date} 
+                            className="w-full p-4 rounded-2xl bg-white/10 border border-white/20 outline-none font-bold text-white" 
+                            onChange={(e) => setFormData({...formData, date: e.target.value})} 
+                        />
+                        <input 
+                            type="time" 
+                            value={formData.time} 
+                            className="w-full p-4 rounded-2xl bg-white/10 border border-white/20 outline-none font-bold text-white" 
+                            onChange={(e) => setFormData({...formData, time: e.target.value})} 
+                        />
                     </div>
                 </div>
 

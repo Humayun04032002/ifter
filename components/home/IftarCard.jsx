@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from 'react';
-import { X, Clock, Users, ThumbsUp, ThumbsDown, MessageSquare, Send, Share2, Navigation, MapPin, CheckCircle2, ChevronDown, Edit3, Info } from 'lucide-react';
+import { X, Clock, ThumbsUp, ThumbsDown, MessageSquare, Send, Share2, Navigation, MapPin, CheckCircle2, ChevronDown, Edit3, Info, Calendar, Utensils } from 'lucide-react';
 
 export default function IftarCard({ selectedLoc, onClose, onVote, onComment, onShare }) {
   const [showCommentForm, setShowCommentForm] = useState(false);
@@ -9,6 +9,30 @@ export default function IftarCard({ selectedLoc, onClose, onVote, onComment, onS
   const [commentText, setCommentText] = useState("");
 
   if (!selectedLoc) return null;
+
+  // সময়কে AM/PM ফরম্যাটে রূপান্তর
+  const formatTimeAMPM = (timeStr) => {
+    if (!timeStr) return "--:--";
+    try {
+      const [hours, minutes] = timeStr.split(':');
+      let h = parseInt(hours);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${minutes} ${ampm}`;
+    } catch (e) { return timeStr; }
+  };
+
+  // তারিখ ফরম্যাট
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "আজকের ইফতার";
+    const options = { day: 'numeric', month: 'long' };
+    return new Date(dateStr).toLocaleDateString('bn-BD', options);
+  };
+
+  // ভোট পারসেন্টেজ ক্যালকুলেশন
+  const totalVotes = (selectedLoc.upVotes || 0) + (selectedLoc.downVotes || 0);
+  const upPercentage = totalVotes > 0 ? Math.round((selectedLoc.upVotes / totalVotes) * 100) : 0;
+  const downPercentage = totalVotes > 0 ? 100 - upPercentage : 0;
 
   const getFoodVisual = (type) => {
     switch(type) {
@@ -24,19 +48,14 @@ export default function IftarCard({ selectedLoc, onClose, onVote, onComment, onS
   const handleCommentSubmit = (e) => {
     e.preventDefault();
     onComment(commentName, commentText);
-    setCommentName("");
-    setCommentText("");
-    setShowCommentForm(false);
+    setCommentName(""); setCommentText(""); setShowCommentForm(false);
   };
 
-  // গুগল ম্যাপস এর সঠিক লিংক জেনারেটর
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${selectedLoc.lat},${selectedLoc.lng}`;
 
   return (
     <div className="fixed inset-0 z-[2000] bg-slate-900/60 backdrop-blur-[4px] flex items-end md:items-center md:justify-center p-0 md:p-6 overflow-hidden">
-      
       <div className="absolute inset-0" onClick={onClose} />
-      
       <div className="relative bg-white w-full md:max-w-xl md:rounded-[3rem] rounded-t-[3.5rem] max-h-[95vh] md:max-h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom md:zoom-in duration-500 overflow-hidden">
         
         <div className="w-14 h-1.5 bg-slate-200 rounded-full mx-auto mt-5 mb-2 shrink-0 md:hidden" />
@@ -52,7 +71,7 @@ export default function IftarCard({ selectedLoc, onClose, onVote, onComment, onS
               <div className="flex flex-col gap-0.5 mt-1">
                 <div className="flex items-center gap-1.5 text-slate-500">
                    <MapPin size={14} className="text-rose-500 shrink-0" />
-                   <p className="text-[12px] md:text-sm font-bold truncate">{selectedLoc.locationName || "লোকেশন নাম পাওয়া যায়নি"}</p>
+                   <p className="text-[12px] md:text-sm font-bold truncate">{selectedLoc.locationName || "লোকেশন পাওয়া যায়নি"}</p>
                 </div>
                 <p className="text-[10px] md:text-xs font-black text-indigo-600 ml-5 uppercase tracking-wider">
                    {selectedLoc.distance?.toFixed(1)} কিমি দূরে
@@ -61,105 +80,117 @@ export default function IftarCard({ selectedLoc, onClose, onVote, onComment, onS
             </div>
           </div>
           <button onClick={onClose} className="p-2 md:p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl text-slate-400 transition-colors shrink-0">
-            <X size={24} className="md:block hidden" />
             <ChevronDown size={28} className="md:hidden block" />
+            <X size={24} className="md:block hidden" />
           </button>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto px-6 md:px-10 space-y-6 md:space-y-8 no-scrollbar pb-6">
+        <div className="flex-1 overflow-y-auto px-6 md:px-10 space-y-4 no-scrollbar pb-6">
           
-          {/* Main Info Cards */}
+          {/* ১. সময় এবং তারিখ */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-slate-50 p-4 md:p-6 rounded-[2rem] border border-slate-100">
-              <p className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase mb-1 tracking-wider">সময়সূচী</p>
-              <p className="font-black text-slate-800 text-base md:text-xl flex items-center gap-2"><Clock size={16} className="text-indigo-500"/> {selectedLoc.time}</p>
+            <div className="bg-indigo-50/50 p-4 rounded-[2rem] border border-indigo-100">
+              <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 tracking-widest">সময়সূচী</p>
+              <p className="font-black text-indigo-900 text-sm md:text-base flex items-center gap-2">
+                <Clock size={14} /> {formatTimeAMPM(selectedLoc.time)}
+              </p>
             </div>
-            <div className="bg-slate-50 p-4 md:p-6 rounded-[2rem] border border-slate-100">
-              <p className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase mb-1 tracking-wider">খাবার</p>
-              <p className="font-black text-slate-800 text-base md:text-xl flex items-center gap-2"> {selectedLoc.foodType}</p>
+            <div className="bg-rose-50/50 p-4 rounded-[2rem] border border-rose-100">
+              <p className="text-[10px] font-black text-rose-400 uppercase mb-1 tracking-widest">তারিখ</p>
+              <p className="font-black text-rose-900 text-sm md:text-base flex items-center gap-2">
+                <Calendar size={14} /> {formatDate(selectedLoc.date)}
+              </p>
             </div>
           </div>
 
-          {/* Description / Additional Info */}
-          {selectedLoc.description && (
-            <div className="bg-amber-50/50 border border-amber-100 p-5 md:p-7 rounded-[2.5rem]">
-               <p className="text-[11px] font-black text-amber-600 uppercase flex items-center gap-1.5 mb-2">
-                 <Info size={14}/> অতিরিক্ত তথ্য
-               </p>
-               <p className="text-slate-700 text-sm md:text-base font-bold leading-relaxed italic">
-                 "{selectedLoc.description}"
-               </p>
+          {/* ২. খাবারের মেনু */}
+          <div className="bg-slate-50 p-5 rounded-[2.5rem] border border-slate-100 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">আজকের মেনু</p>
+              <p className="font-black text-slate-800 text-lg md:text-xl flex items-center gap-2">
+                <Utensils size={18} className="text-indigo-600"/> {selectedLoc.foodType}
+              </p>
             </div>
-          )}
+            <span className="text-4xl opacity-20">{getFoodVisual(selectedLoc.foodType).emoji}</span>
+          </div>
 
-          {/* Voting */}
-          <div className="bg-indigo-50/50 border border-indigo-100 rounded-[2.5rem] p-5 md:p-7">
+          {/* ৩. ভোটের পারসেন্টেজ (সঠিক বনাম ভুল) */}
+          <div className="bg-white border border-slate-100 p-5 rounded-[2.5rem] shadow-sm">
+             <div className="flex justify-between items-end mb-2 px-1">
+                <span className="text-[10px] font-black text-emerald-600 uppercase">সঠিক: {upPercentage}%</span>
+                <span className="text-[10px] font-black text-rose-600 uppercase">ভুল: {downPercentage}%</span>
+             </div>
+             {/* প্রগ্রেস বার */}
+             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex">
+                <div style={{ width: `${upPercentage}%` }} className="h-full bg-emerald-500 transition-all duration-1000" />
+                <div style={{ width: `${downPercentage}%` }} className="h-full bg-rose-500 transition-all duration-1000" />
+             </div>
+             <p className="text-center text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-tighter">মোট {totalVotes} জন তাদের মতামত দিয়েছেন</p>
+          </div>
+
+          {/* ৪. তথ্য যাচাই বাটন */}
+          <div className="bg-indigo-50/50 border border-indigo-100 rounded-[2.5rem] p-5">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-[11px] font-black text-indigo-600 uppercase flex items-center gap-1.5"><CheckCircle2 size={14}/> তথ্য যাচাইকরণ</p>
-                <p className="text-sm md:text-base text-indigo-900 font-bold mt-0.5">তথ্যটি সঠিক কি না নিশ্চিত করুন</p>
+                <p className="text-[11px] font-black text-indigo-600 uppercase flex items-center gap-1.5"><CheckCircle2 size={14}/> আপনার মতামত</p>
+                <p className="text-xs text-indigo-900 font-bold">এই তথ্যটি কি সঠিক?</p>
               </div>
-              <button onClick={() => setShowVoteOptions(!showVoteOptions)} className="px-5 py-3 rounded-2xl font-black text-xs md:text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-200 active:scale-95 transition-transform shrink-0">ভোট দিন</button>
+              <button onClick={() => setShowVoteOptions(!showVoteOptions)} className="px-4 py-2 rounded-xl font-black text-xs bg-indigo-600 text-white active:scale-95 transition-transform">ভোট দিন</button>
             </div>
             {showVoteOptions && (
-              <div className="grid grid-cols-2 gap-3 mt-5 animate-in fade-in zoom-in duration-300">
-                <button onClick={() => onVote(selectedLoc.id, true)} className="flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-[11px] transition-colors"><ThumbsUp size={16} /> সঠিক ({selectedLoc.upVotes || 0})</button>
-                <button onClick={() => onVote(selectedLoc.id, false)} className="flex items-center justify-center gap-2 py-4 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-[11px] transition-colors"><ThumbsDown size={16} /> ভুল ({selectedLoc.downVotes || 0})</button>
+              <div className="grid grid-cols-2 gap-3 mt-4 animate-in fade-in zoom-in">
+                <button onClick={() => onVote(selectedLoc.id, true)} className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-xl font-black text-[10px]"><ThumbsUp size={14} /> সঠিক</button>
+                <button onClick={() => onVote(selectedLoc.id, false)} className="flex items-center justify-center gap-2 py-3 bg-rose-500 text-white rounded-xl font-black text-[10px]"><ThumbsDown size={14} /> ভুল</button>
               </div>
             )}
           </div>
 
-          {/* Comments */}
+          {/* বাকি সব (Description, Comments) */}
+          {selectedLoc.description && (
+            <div className="bg-amber-50/50 border border-amber-100 p-5 rounded-[2.5rem]">
+               <p className="text-slate-700 text-xs font-bold italic leading-relaxed">"{selectedLoc.description}"</p>
+            </div>
+          )}
+
+          {/* Comments Section */}
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-black text-slate-800 flex items-center gap-2 text-lg md:text-xl"><MessageSquare size={22} className="text-indigo-600"/> রিভিউ ({selectedLoc.comments?.length || 0})</h3>
-              <button onClick={() => setShowCommentForm(!showCommentForm)} className="text-indigo-600 font-black text-xs bg-indigo-50 px-4 py-2 rounded-xl flex items-center gap-1 hover:bg-indigo-100 transition-colors"><Edit3 size={14}/> লিখুন</button>
+            <div className="flex justify-between items-center px-1">
+              <h3 className="font-black text-slate-800 text-base flex items-center gap-2"><MessageSquare size={18} className="text-indigo-600"/> রিভিউ ({selectedLoc.comments?.length || 0})</h3>
+              <button onClick={() => setShowCommentForm(!showCommentForm)} className="text-indigo-600 font-black text-[10px] bg-indigo-50 px-3 py-1.5 rounded-lg flex items-center gap-1"><Edit3 size={12}/> লিখুন</button>
             </div>
 
             {showCommentForm && (
-              <form onSubmit={handleCommentSubmit} className="bg-slate-900 p-5 md:p-7 rounded-[2.5rem] space-y-4 animate-in slide-in-from-top duration-300">
-                <input required placeholder="আপনার নাম" className="w-full p-4 bg-white/10 rounded-2xl text-xs text-white outline-none border border-white/5 focus:border-indigo-500 transition-colors" value={commentName} onChange={e => setCommentName(e.target.value)} />
+              <form onSubmit={handleCommentSubmit} className="bg-slate-900 p-5 rounded-[2rem] space-y-3">
+                <input required placeholder="আপনার নাম" className="w-full p-3 bg-white/10 rounded-xl text-xs text-white outline-none border border-white/5" value={commentName} onChange={e => setCommentName(e.target.value)} />
                 <div className="relative">
-                  <textarea required rows="2" placeholder="আপনার অভিজ্ঞতা লিখুন..." className="w-full p-4 pr-14 bg-white/10 rounded-2xl text-sm text-white outline-none border border-white/5 focus:border-indigo-500 transition-colors" value={commentText} onChange={e => setCommentText(e.target.value)} />
-                  <button type="submit" className="absolute right-3 bottom-3 bg-indigo-600 hover:bg-indigo-500 p-3 rounded-xl text-white transition-all active:scale-90"><Send size={18}/></button>
+                  <textarea required rows="2" placeholder="আপনার অভিজ্ঞতা..." className="w-full p-3 pr-12 bg-white/10 rounded-xl text-xs text-white outline-none border border-white/5" value={commentText} onChange={e => setCommentText(e.target.value)} />
+                  <button type="submit" className="absolute right-2 bottom-2 bg-indigo-600 p-2 rounded-lg text-white"><Send size={16}/></button>
                 </div>
               </form>
             )}
 
-            <div className="space-y-4 pb-4">
-              {selectedLoc.comments?.length > 0 ? (
-                selectedLoc.comments.map((c, i) => (
-                  <div key={i} className="bg-slate-50 p-5 rounded-[2rem] border border-slate-100 hover:border-indigo-100 transition-colors">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <p className="font-black text-indigo-600 text-[11px] md:text-xs uppercase tracking-tighter">{c.name}</p>
-                      <p className="text-[10px] text-slate-400 font-bold tracking-tight">{c.time}</p>
-                    </div>
-                    <p className="text-slate-700 text-sm md:text-base font-bold leading-relaxed">{c.text}</p>
+            <div className="space-y-3 pb-2">
+              {selectedLoc.comments?.map((c, i) => (
+                <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="font-black text-indigo-600 text-[10px] uppercase">{c.name}</p>
+                    <p className="text-[9px] text-slate-400 font-bold">{c.time}</p>
                   </div>
-                ))
-              ) : (
-                <div className="py-10 text-center">
-                  <p className="text-slate-400 font-bold text-sm italic">এখনো কোনো রিভিউ নেই। প্রথম রিভিউটি আপনি লিখুন!</p>
+                  <p className="text-slate-700 text-xs font-bold leading-relaxed">{c.text}</p>
                 </div>
-              )}
+              ))}
             </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="px-6 md:px-10 py-6 md:py-8 border-t border-slate-50 grid grid-cols-2 gap-4 bg-white shrink-0">
-          <button 
-            onClick={() => onShare(selectedLoc)} 
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 md:py-5 rounded-[2.5rem] font-black flex items-center justify-center gap-2 transition-all active:scale-95"
-          >
-            <Share2 size={20} /> শেয়ার
+        {/* Footer */}
+        <div className="px-6 py-6 border-t border-slate-50 grid grid-cols-2 gap-4 bg-white shrink-0">
+          <button onClick={() => onShare(selectedLoc)} className="bg-slate-100 text-slate-700 py-4 rounded-[2rem] font-black flex items-center justify-center gap-2 active:scale-95 transition-all text-sm">
+            <Share2 size={18} /> শেয়ার
           </button>
-          <button 
-            onClick={() => window.open(googleMapsUrl, '_blank')} 
-            className="bg-slate-900 hover:bg-slate-800 text-white py-4 md:py-5 rounded-[2.5rem] font-black flex items-center justify-center gap-2 shadow-2xl shadow-slate-200 transition-all active:scale-95"
-          >
-            <Navigation size={20} /> ম্যাপ দেখুন
+          <button onClick={() => window.open(googleMapsUrl, '_blank')} className="bg-slate-900 text-white py-4 rounded-[2rem] font-black flex items-center justify-center gap-2 active:scale-95 transition-all text-sm shadow-xl shadow-slate-200">
+            <Navigation size={18} /> ম্যাপ দেখুন
           </button>
         </div>
       </div>
